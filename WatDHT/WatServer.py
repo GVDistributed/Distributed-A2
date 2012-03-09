@@ -2,8 +2,6 @@
 
 import sys
 import time
-sys.path.append('./gen-py')
-sys.path.append('/u5/gguruganesh/cs454/Distributed-A2/lib/python2.6/site-packages/')
 
 from WatDHT import Iface,Processor
 from ttypes import *
