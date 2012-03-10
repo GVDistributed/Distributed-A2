@@ -38,11 +38,11 @@ class RoutingTable(object):
         self.table = {}
 
     @writeLock(RoutingTableLock)
-    def remove(self, nodes)
+    def remove(self, nodes):
         toDel = set()
         for node in nodes:
             for k,v in self.table.iteritems():
-                if (v.id == node.id)
+                if (v.id == node.id):
                     toDel.add(k)
         for x in toDel:
             self.table.pop(k)
@@ -140,7 +140,7 @@ class NeighborSet(object):
             self.cw.remove(node)
             self.ccw.remove(node)
 
-    @readLock(NeighborLock)
+    @readOnly(NeighborLock)
     def get_candidate_list(self):
         return (self.cw[:], self.ccw[:])
         

@@ -6,6 +6,14 @@ import ReadWriteLock
 from threading import Lock
 from threading import Thread
 
+def wait_on(event):
+    def wrap(f):
+        def newF(*args, **kwargs):
+            event.wait()
+            return f(*args, **kwargs)
+        return newF
+    return wrap
+
 def periodic_thread(func, period):
     def wrapped():
         while True:

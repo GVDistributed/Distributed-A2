@@ -5,7 +5,7 @@ import time
 import threading
 import logging
 
-from WatDHT import Iface,Processor
+from WatDHT import Iface, Processor
 from ttypes import *
 
 from thrift.transport import TSocket
@@ -15,22 +15,31 @@ from thrift.server import TServer
 
 from utils import periodic_thread
 from utils import delayed_thread
+from utils import wait_on
 
 from WatClient import WDHTClient
 import Router
 
 class WDHTHandler(Iface):
 
+    bootstrapped = threading.Event()
+    migrated = threading.Event()
+
     def __init__(self, node):
         self.node = node
         self.router = Router.Router(self.node)
+        self.migrated.set()
 
+    @wait_on(bootstrapped)
+    @wait_on(migrated)
     def get(self, key):
         """
             Parameters:
         """
         return "0"
 
+    @wait_on(bootstrapped)
+    @wait_on(migrated)
     def put(self, key, val, duration):
         """
         Parameters:
@@ -48,7 +57,7 @@ class WDHTHandler(Iface):
         logging.info("%032x is Joining", nid.int_id)
 
         next_node = self.router.closest_predecessor(nid)
-        if next_node == self.node:
+        if next_node.id == self.node.id:
             nodes = self.router.get_nodes()
         else:
             nodes = WDHTClient(next_node.ip, next_node.port).join(nid)
@@ -84,12 +93,18 @@ class WDHTHandler(Iface):
         self.router.update([nid])
         return cur
 
-    def migrate_kv(self, nid):
-        """
-        Parameters:
-         - nid
-        """
-        pass
+    def migrate_kv(self, id):
+        successor = self.router.neighbor_set.get_successor()
+        logging.info("Migrating to %032x", successor.int_id)
+        if successor.id != id:
+            raise WatDHTException(WatDHTErrorType.INCORRECT_MIGRATION_SOURCE, node=successor)
+
+        if not self.migrated.is_set():
+            raise WatDHTException(WatDHTErrorType.OL_MIGRATION_IN_PROGRESS)
+
+        # prepare and remove key-value dict from the store here
+
+        return {}
 
     def gossip_neighbors(self, nid, neighbors):
         """
@@ -121,11 +136,65 @@ class WDHTHandler(Iface):
          - id
         """
         cur = self.router.closest_predecessor(self,NodeID(id,-1,-1))
-        if (cur.id == self.node.id)
+        if cur.id == self.node.id:
             return cur
         else:
             return WDHTClient(cur.ip, cur.port).closest_predecessor(id)
 
+    def init_first(self):
+        """
+        Initiate the node given that it's the very first
+        """
+        self.bootstrapped.set()
+
+    def init(self, existing_host, existing_port):
+        """
+        Performs process of joining the system
+        """
+
+        # Find the predecessor and boostrap
+        logging.info("Finding predecessor and bootstrapping")
+        node_ids = WDHTClient(existing_host, existing_port).join(self.node) 
+        self.router.update(node_ids)
+        self.router.debug()
+
+        # Enable receiving requests
+        self.bootstrapped.set()
+
+        # Migrate from predecessor
+        self.migrated.clear()
+
+        backoff = 0.1
+        while True:
+            predecessor = self.router.neighbor_set.get_predecessor()
+            logging.info("Migrating from %032x", predecessor.int_id)
+            try:
+                kvs = WDHTClient(predecessor.ip, predecessor.port).migrate_kv(self.node.id)
+                break
+
+            except WatDHTException, e:
+                if e.error_code == WatDHTErrorType.INCORRECT_MIGRATION_SOURCE:
+                    self.router.update([e.node])
+                    logging.debug("Incorrect migration source")
+                elif e.error_code == WatDHTErrorType.OL_MIGRATION_IN_PROGRESS:
+                    backoff *= 1.1
+                    time.sleep(backoff)
+                    logging.debug("Backing off")
+                else:
+                    raise
+
+        # Populate store with key values
+        # ...
+        self.migrated.set()
+           
+        # Gossip neighbours
+        # ...
+
+        # Maintain routing table
+        # ...
+
+        logging.info("Initialized")
+ 
     def maintain_neighbors(self):
         """
         Performs periodic neighbor maintenance by gossiping
@@ -203,7 +272,6 @@ def start(handler, port):
     server = TServer.TThreadedServer(processor, transport, tfactory, pfactory)
     server.serve()
 
-
 if __name__ == '__main__':
     
     logging.basicConfig(level=logging.DEBUG)#INFO)
@@ -227,6 +295,9 @@ if __name__ == '__main__':
 
         print "Joining (%s:%d)" % (existing_host, existing_port)
         delayed_thread(lambda:handler.init(existing_host, existing_port), 1)
+
+    else:
+        handler.init_first()
 
     # Starting maintenance threads
     periodic_thread(handler.maintain_neighbors, 10)
