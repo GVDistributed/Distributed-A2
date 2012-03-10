@@ -31,6 +31,7 @@ class WatDHTErrorType:
     "OL_MIGRATION_IN_PROGRESS": 2,
   }
 
+import struct
 
 class NodeID:
   """
@@ -46,6 +47,17 @@ class NodeID:
     (2, TType.STRING, 'ip', None, None, ), # 2
     (3, TType.I32, 'port', None, None, ), # 3
   )
+
+  @property
+  def int_id(self):
+    x = struct.unpack(">QQ", self.id)
+    return (x[0]<<64)|x[1] 
+
+  @classmethod
+  def to_id(cls, i):
+    a = i>>64
+    b = i%(1<<64)
+    return struct.pack(">QQ", a, b)
 
   def __init__(self, id=None, ip=None, port=None,):
     self.id = id
