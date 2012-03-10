@@ -13,6 +13,9 @@ from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.server import TServer
 
+from utils import periodic_thread
+from utils import delayed_thread
+
 from WatClient import WDHTClient
 import Router
 
@@ -125,18 +128,6 @@ def start(handler, port):
     server = TServer.TThreadedServer(processor, transport, tfactory, pfactory)
     server.serve()
 
-def periodic_thread(func, period):
-    def wrapped():
-        while True:
-            time.sleep(period)
-            func()
-    threading.Thread(target=wrapped).start()
-
-def delayed_thread(func, delay):
-    def wrapped():
-        time.sleep(delay)
-        func()
-    threading.Thread(target=wrapped).start()
 
 if __name__ == '__main__':
     

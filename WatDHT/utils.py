@@ -1,13 +1,23 @@
 #!/usr/bin/python
 
-from hashlib import md5
-import random
-import struct
+import time
+
 import ReadWriteLock
 from threading import Lock
+from threading import Thread
 
-import itertools
+def periodic_thread(func, period):
+    def wrapped():
+        while True:
+            time.sleep(period)
+            func()
+    Thread(target=wrapped).start()
 
+def delayed_thread(func, delay):
+    def wrapped():
+        time.sleep(delay)
+        func()
+    Thread(target=wrapped).start()
 
 def synchronize(Lock):
     def wrap(f):
