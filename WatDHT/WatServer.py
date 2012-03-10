@@ -21,6 +21,8 @@ from utils import writeLock
 
 from ReadWriteLock import ReadWriteLock
 from WatClient import WDHTClient
+
+import Store
 import Router
 
 class WDHTHandler(Iface):
@@ -31,25 +33,33 @@ class WDHTHandler(Iface):
     def __init__(self, node):
         self.node = node
         self.router = Router.Router(self.node)
+        self.store = Store.Store()
 
     @wait_on(bootstrapped)
     @readOnly(migratelock)
     def get(self, key):
-        """
-            Parameters:
-        """
-        return "0"
+        nid = Router.hash(key)
+        next_node = self.router.closest_predecessor(NodeId(nid, -1, -1))
+        logging.debug("Sending (%s, %s) to %032x", key, value, nid.int_id)
+        if next_node.id == self.node.id:
+            logging.debug("Oh wait, that's me!")
+            value = self.store.get(key)
+            if value is None:
+                raise WatDHTException(WatDHTErrorType.KEY_NOT_FOUND)
+
+        return WDHTClient(next_node.ip, next_node.port).get(nid)
 
     @wait_on(bootstrapped)
     @readOnly(migratelock)
     def put(self, key, val, duration):
-        """
-        Parameters:
-         - key
-         - val
-         - duration
-        """
-        pass
+        nid = Router.hash(key)
+        next_node = self.router.closest_predecessor(NodeId(nid, -1, -1))
+        logging.debug("Sending (%s, %s) to %032x", key, value, nid.int_id)
+        if next_node.id == self.node.id:
+            logging.debug("Oh wait, that's me!")
+            self.store.put(key, val, duration)
+        else:
+            WDHTClient(next_node.ip, next_node.port).get(nid)
 
     def join(self, nid):
         """
