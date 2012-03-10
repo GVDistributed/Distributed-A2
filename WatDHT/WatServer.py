@@ -59,16 +59,30 @@ class WDHTHandler(Iface):
 
         return nodes
 
+
+    def init(self, existing_host, existing_port):
+        """
+        Performs process of joining the system
+        """
+        client = WDHTClient(existing_host, existing_port)
+        node_ids = client.join(self.node) 
+        self.router.update(node_ids)
+        self.router.debug()
+
     def ping(self):
         return self.node.id 
 
     def maintain(self, id, nid):
-        """
-        Parameters:
-         - id
-         - nid
-        """
-        pass
+        cur = None
+        closest = self.router.closest_predecessor(NodeId(id,-1,-1))
+        if (closest is not self):
+            client = WDHTClient(closest.ip, closest.port)
+            cur = client.maintain(id,nid)
+        else:
+            cur = self.router.get_neighbors()
+            cur.append(self.node.id)
+        self.router.update([nid])
+        return cur
 
     def migrate_kv(self, nid):
         """
@@ -83,41 +97,102 @@ class WDHTHandler(Iface):
          - nid
          - neighbors
         """
-        pass
+        cur = self.router.neighbor_set.get_neighbors()
+        cur.append(self.node.id)
+        neighbors.append(nid)
+        self.router.neighbor_set.update(neighbors)
+        return cur
 
     def closest_node_cr(self, id):
         """
         Parameters:
          - id
         """
-        pass
+        cur = self.router.closest_successor(self,NodeID(id,-1,-1))
+        if (cur.id == self.node.id):
+            return cur
+        else:
+            client = WDHTClient(cur.ip, cur.port)
+            return client.closest_node_cr(id)
 
     def closest_node_ccr(self, id):
         """
         Parameters:
          - id
         """
-        pass
-
-    def init(self, existing_host, existing_port):
-        """
-        Performs process of joining the system
-        """
-        client = WDHTClient(existing_host, existing_port)
-        node_ids = client.join(self.node) 
-        self.router.update(node_ids)
-        self.router.debug()
+        cur = self.router.closest_predecessor(self,NodeID(id,-1,-1))
+        if (cur.id == self.node.id)
+            return cur
+        else:
+            return WDHTClient(cur.ip, cur.port).closest_predecessor(id)
 
     def maintain_neighbors(self):
         """
         Performs periodic neighbor maintenance by gossiping
         """
+        def helper(L, t):
+            """ 
+            L is the list and t is 0 for cw and 1 for ccw.
+            If L has no elements, finds the closest node by looking
+            at all the elements on the table.
+            If L has one element, finds the closest node by gossiping 
+            on the other existing neighbor
+            """
+            closestNode = None
+            if (len(L)==0):
+                if (t==0):
+                    closestNode = self.router.closest_successor(self.node) 
+                else:
+                    closestNode = self.router.closest_predecessor(self.node)
+                client = WDHTClient(closestNode.ip, closestNode.port)
+                if (t==0):
+                    closestNode = client.closest_node_cr(self.node.id)
+                else:
+                    closestNode = client.closest_node_ccr(self.node.id)
+                self.router.update([closestNode])
+
+            if (len(L)==1):
+                neighbors = self.router.neighbor_set.get_neighbors()
+                if (t==0):
+                    closestNode = self.router.closest_successor(self.node) 
+                else:
+                    closestNode = self.router.closest_predecessor(self.node)
+                client = WDHTClient(closestNode.ip, closestNode.port)
+                cur = client.gossip_neighbors(self.node.id, neighbors)
+                self.neighbor_set.update(cur) 
+
+        neighbors = self.router.neighbor_set.get_neighbors()
+        isDead = set()
+        for node in neighbors:
+            client = WDHTClient(node.ip,node.port)
+            try:
+                cur = client.gossip_neighbors(self.node.id,neighbors)
+                self.neighbor_set.update(cur)
+            except E:
+                #TODO: Check if there are other exceptions that can happen
+                isDead.add(node)
+
+        if (len(isDead)>0):
+            logging.debug("Removing the neighbors %s"%(
+                            ', '.join([ str(x.int_id) for x in isDead])))
+            self.router.remove([x for x in isDead])
+
+        (cw,ccw) = self.router.neighbor_set.get_candidate_list()
+        while (len(cw)<2):
+            helper(cw,0)
+            (cw,ccw) = self.router.neighbor_set.get_candidate_list()
+
+        while (len(ccw)<2):
+            helper(ccw,1)
+            (cw,ccw) = self.router.neighbor_set.get_candidate_list()
+
         logging.info("Maintaining Neighbors")
 
     def maintain_routing(self):
         """
         Performs periodic routing maintenance by pinging
         """
+         
         logging.info("Maintaining Routing Table")
 
 def start(handler, port):
@@ -161,4 +236,4 @@ if __name__ == '__main__':
     print "Starting Server"
     start(handler, port)
     
-    print "Done"
+    print("Done")

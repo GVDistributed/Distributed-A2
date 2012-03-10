@@ -38,6 +38,16 @@ class RoutingTable(object):
         self.table = {}
 
     @writeLock(RoutingTableLock)
+    def remove(self, nodes)
+        toDel = set()
+        for node in nodes:
+            for k,v in self.table.iteritems():
+                if (v.id == node.id)
+                    toDel.add(k)
+        for x in toDel:
+            self.table.pop(k)
+        
+    @writeLock(RoutingTableLock)
     def update(self, nodes):
         for node in nodes:
             self.add_node(node)
@@ -125,6 +135,16 @@ class NeighborSet(object):
         return self.ccw[0]
 
     @writeLock(NeighborLock)
+    def remove(self, nodes):
+        for node in nodes:
+            self.cw.remove(node)
+            self.ccw.remove(node)
+
+    @readLock(NeighborLock)
+    def get_candidate_list(self):
+        return (self.cw[:], self.ccw[:])
+        
+    @writeLock(NeighborLock)
     def update(self, nodes):
         self.cw.extend(nodes)
         self.ccw.extend(nodes)
@@ -161,8 +181,15 @@ class Router(object):
 
     @readOnly(RouterLock)
     def closest_predecessor(self, node):
+        """ returns the closest node in the ccw distance"""
         return min(self.candidates(),
                    key = lambda p: ccw_distance(node, p, self.m))
+    
+    @readOnly(RouterLock)
+    def closest_successor(self, node):
+        """ returns the closest node in the cw distance"""
+        return min(self.candidates(),
+                    key = lambda p: cw_distance(node, p, self.m))
 
     @readOnly(RouterLock)
     def closest_node(self, node):
@@ -174,6 +201,11 @@ class Router(object):
         self.routing_table.update(nodes)
         self.neighbor_set.update(nodes)
 
+    @writeLock(RouterLock)
+    def remove(self, nodes):
+        self.routing_table.remove(nodes)
+        self.neighbor_set.remove(nodes)
+
     @readOnly(RouterLock)
     def debug(self):
         logging.debug("{Routing Table}")
@@ -181,8 +213,14 @@ class Router(object):
         logging.debug("{Neighbor Set}")
         self.neighbor_set.debug()
 
-if __name__ == '__main__':
+    @writeLock(RouterLock)
+    def update(self,nodes):
+        self.routing_table.update(nodes)
+        self.neighbor_set.update(nodes)
 
+
+
+if __name__ == '__main__':
     m0 = NodeID.dummy()
     m1 = NodeID.dummy()
     m2 = NodeID.dummy()
