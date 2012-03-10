@@ -14,7 +14,6 @@ class NodeID(object):
     """
     Dummy class for testing purposes
     """
- 
     @classmethod
     def dummy(cls):
         obj = cls()
