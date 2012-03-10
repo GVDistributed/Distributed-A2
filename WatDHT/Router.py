@@ -4,7 +4,7 @@ from hashlib import md5
 import random
 import struct
 
-from utils import readOnly, writeLock
+from utils import readOnly, writeLock, unique
 from ReadWriteLock import ReadWriteLock
 
 import logging
@@ -87,14 +87,10 @@ class RoutingTable(object):
                 ret[r]= self.get_last_node(r)
         return ret
                 
-                
-                
-                
-
 
     @readOnly(RoutingTableLock)
     def get_nodes(self):
-        return self.table.values()
+        return unique(self.table.values())
     
     @readOnly(RoutingTableLock)
     def debug(self):
@@ -138,7 +134,7 @@ class NeighborSet(object):
     
     @readOnly(NeighborLock)
     def get_neighbors(self):
-        return self.cw + self.ccw
+        return unique(self.cw + self.ccw)
 
     @readOnly(NeighborLock)
     def get_successor(self):
@@ -162,10 +158,15 @@ class NeighborSet(object):
     def get_candidate_list(self):
         return (self.cw[:], self.ccw[:])
         
+
     @writeLock(NeighborLock)
     def update(self, nodes):
+        logging.debug("Adding nodes %s",' '.join(
+                            ["%032x"%(x.int_id) for x in nodes]))
         self.cw.extend(nodes)
         self.ccw.extend(nodes)
+        self.cw = unique(self.cw)
+        self.ccw = unique(self.ccw)
         self.cw.sort(key = self.cw_distance)
         self.ccw.sort(key = self.ccw_distance)
         self.cw = self.cw[:self.size]
@@ -191,11 +192,11 @@ class Router(object):
 
     @readOnly(RouterLock)
     def get_nodes(self):
-        return self.routing_table.get_nodes() + self.neighbor_set.get_neighbors()
+        return unique(self.routing_table.get_nodes() + self.neighbor_set.get_neighbors())
 
     @readOnly(RouterLock)
     def candidates(self):
-        return [self.node] + self.get_nodes()
+        return unique([self.node] + self.get_nodes())
 
     @readOnly(RouterLock)
     def closest_predecessor(self, node):
@@ -230,11 +231,6 @@ class Router(object):
         self.routing_table.debug()
         logging.debug("{Neighbor Set}")
         self.neighbor_set.debug()
-
-    @writeLock(RouterLock)
-    def update(self,nodes):
-        self.routing_table.update(nodes)
-        self.neighbor_set.update(nodes)
 
 
 

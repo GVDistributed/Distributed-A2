@@ -84,17 +84,24 @@ class WDHTHandler(Iface):
         return self.node.id 
 
     def maintain(self, id, nid):
+        logging.info("Maintain called from %032x", nid.int_id)
         cur = None
-        closest = self.router.closest_predecessor(NodeId(id,-1,-1))
+        closest = self.router.closest_predecessor(NodeID(id,-1,-1))
+        logging.debug("Closest id was %032x",closest.int_id)
         if closest.id is not self.node.id:
+            logging.debug(" we are not the closest making a call")
             client = WDHTClient(closest.ip, closest.port)
             cur = client.maintain(id,nid)
         else:
-            cur = self.router.get_neighbors()
-            cur.append(self.node.id)
-        if (self.id != nid.id):
+            logging.debug("we are teh closest")
+            cur = self.router.neighbor_set.get_neighbors()
+            cur.append(self.node)
+        if (self.node.id != nid.id):
             #no need to update yourself
             self.router.update([nid])
+        logging.debug("Maintain will return %s",' '.join(
+                        ["%032x"%(x.int_id) for x in cur]))
+                                        
         return cur
 
     @writeLock(migratelock, 0, lambda: WatDHTException(WatDHTErrorType.OL_MIGRATION_IN_PROGRESS))
@@ -142,6 +149,7 @@ class WDHTHandler(Iface):
         cur = self.router.neighbor_set.get_neighbors()
         cur.append(self.node)
         neighbors.append(nid)
+        logging.info("Calling Update from gossip")
         self.router.neighbor_set.update(neighbors)
         return cur
 
@@ -150,7 +158,7 @@ class WDHTHandler(Iface):
         Parameters:
          - id
         """
-        cur = self.router.closest_successor(self,NodeID(id,-1,-1))
+        cur = self.router.closest_successor(NodeID(id,-1,-1))
         if cur.id == self.node.id:
             return cur
         else:
@@ -219,7 +227,11 @@ class WDHTHandler(Iface):
                     closestNode = client.closest_node_cr(self.node.id)
                 else:
                     closestNode = client.closest_node_ccr(self.node.id)
-                self.router.update([closestNode])
+                if closestNode is None:
+                    logging.debug("The closest node was None")
+
+                if closestNode.id != self.node.id:
+                    self.router.update([closestNode])
 
             if (len(L)==1):
                 neighbors = self.router.neighbor_set.get_neighbors()
@@ -227,9 +239,11 @@ class WDHTHandler(Iface):
                     closestNode = self.router.closest_successor(self.node) 
                 else:
                     closestNode = self.router.closest_predecessor(self.node)
-                client = WDHTClient(closestNode.ip, closestNode.port)
-                cur = client.gossip_neighbors(self.node, neighbors)
-                self.neighbor_set.update(cur) 
+
+                if (closestNode.id != self.node.id):
+                    client = WDHTClient(closestNode.ip, closestNode.port)
+                    cur = client.gossip_neighbors(self.node, neighbors)
+                    self.router.neighbor_set.update(cur) 
 
         ##Find out who is dead.
         neighbors = self.router.neighbor_set.get_neighbors()
@@ -238,7 +252,7 @@ class WDHTHandler(Iface):
             client = WDHTClient(node.ip,node.port)
             try:
                 cur = client.gossip_neighbors(self.node,neighbors)
-                self.neighbor_set.update(cur)
+                self.router.neighbor_set.update(cur)
             except Exception as E:
                 #TODO: Check if there are other exceptions that can happen
                 isDead.add(node)
@@ -274,7 +288,7 @@ class WDHTHandler(Iface):
                 isDead.add(node)
 
         self.router.remove([x for x in isDead])
-        missing_regions = self.router.get_missing_regions()
+        missing_regions = self.router.routing_table.get_missing_regions()
         for r,val in missing_regions.iteritems():
             self.maintain(NodeID.to_id(val),self.node)
          
@@ -315,8 +329,9 @@ if __name__ == '__main__':
         handler.prv_init_origin()
 
     # Starting maintenance threads
-    periodic_thread(handler.prv_maintain_neighbors, 10)
-    periodic_thread(handler.prv_maintain_routing, 30)
+    #TODO Change this back to 10s and 30 s
+    periodic_thread(handler.prv_maintain_neighbors, 1)
+    periodic_thread(handler.prv_maintain_routing, 5)
 
     # Start server
     print "Starting Server"

@@ -60,6 +60,16 @@ def writeLock(rwLock,timeout = None,callback=None):
         return newF
     return wrap
 
+def unique(L):
+    """ Returns a unique list of nodes 
+        given a list containing duplicates"""
+    isHere = set([x.int_id for x in L]) 
+    ret = []
+    for x in L:
+        if x.int_id in isHere:
+            isHere.remove(x.int_id)
+            ret.append(x)
+    return ret
 
 
 
