@@ -21,7 +21,7 @@ def periodic_thread(func, period):
             func()
     Thread(target=wrapped).start()
 
-def delayed_thread(func, delay):
+def delayed_thread(func, delay=0):
     def wrapped():
         time.sleep(delay)
         func()

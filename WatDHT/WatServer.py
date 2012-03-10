@@ -39,8 +39,8 @@ class WDHTHandler(Iface):
     @readOnly(migratelock)
     def get(self, key):
         nid = Router.hash(key)
-        next_node = self.router.closest_predecessor(NodeId(nid, -1, -1))
-        logging.debug("Sending (%s, %s) to %032x", key, value, nid.int_id)
+        next_node = self.router.closest_predecessor(NodeID(nid, -1, -1))
+        logging.debug("Sending GET(%s) to %032x", key, next_node.int_id)
         if next_node.id == self.node.id:
             logging.debug("Oh wait, that's me!")
             value = self.store.get(key)
@@ -53,8 +53,8 @@ class WDHTHandler(Iface):
     @readOnly(migratelock)
     def put(self, key, val, duration):
         nid = Router.hash(key)
-        next_node = self.router.closest_predecessor(NodeId(nid, -1, -1))
-        logging.debug("Sending (%s, %s) to %032x", key, value, nid.int_id)
+        next_node = self.router.closest_predecessor(NodeID(nid, -1, -1))
+        logging.debug("Sending PUT(%s, %s) to %032x", key, val, next_node.int_id)
         if next_node.id == self.node.id:
             logging.debug("Oh wait, that's me!")
             self.store.put(key, val, duration)
@@ -150,7 +150,7 @@ class WDHTHandler(Iface):
         Parameters:
          - id
         """
-        cur = self.router.closest_successor(NodeID(id,-1,-1))
+        cur = self.router.closest_successor(self,NodeID(id,-1,-1))
         if cur.id == self.node.id:
             return cur
         else:

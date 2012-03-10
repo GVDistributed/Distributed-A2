@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-ps aux | grep WatServer | grep python | tr -s " " | cut -d" " -f2 | xargs kill -9
+ps aux | grep WatServer | grep python | grep `whoami` | tr -s " " | cut -d" " -f2 | xargs kill -9
