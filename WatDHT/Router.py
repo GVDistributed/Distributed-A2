@@ -3,15 +3,18 @@
 from hashlib import md5
 import random
 import struct
+
 from utils import readOnly, writeLock
 from ReadWriteLock import ReadWriteLock
+
+import logging
 import itertools
 
 class NodeID(object):
-    # binary id
-    # string ip
-    # i32 port
-   
+    """
+    Dummy class for testing purposes
+    """
+ 
     @classmethod
     def dummy(cls):
         obj = cls()
@@ -25,7 +28,6 @@ class NodeID(object):
 
 def hash(x):
     return md5(x).digest()
-    
 
 class RoutingTable(object):
     RoutingTableLock = ReadWriteLock() 
@@ -68,12 +70,11 @@ class RoutingTable(object):
     
     @readOnly(RoutingTableLock)
     def debug(self):
-        print "[%x]" % self.node.int_id
         for r in range(self.regions):
             if self.table.has_key(r):
-                print "%d %032x" % (r, self.table[r].int_id)
+                logging.debug("%d %032x", r, self.table[r].int_id)
             else:
-                print r, "None"
+                logging.debug("%d", r)
 
 def cw_distance(origin, p, mod):
     return (p.int_id - origin.int_id) % mod
@@ -134,21 +135,42 @@ class NeighborSet(object):
  
     @readOnly(NeighborLock)
     def debug(self):
-        print "CW: ", ', '.join("%032x" % node.int_id for node in self.cw)
-        print "CCW:", ', '.join("%032x" % node.int_id for node in self.ccw)
+        logging.debug("CW: " + ', '.join("%032x" % node.int_id for node in self.cw))
+        logging.debug("CCW:" + ', '.join("%032x" % node.int_id for node in self.ccw))
 
 class Router(object):
     RouterLock = ReadWriteLock()
     def __init__(self, node, n = 128):
         self.n = n 
+        self.m = 2**self.n
         self.routing_table = RoutingTable(node, self.n, self.n / 32)
-        self.neighbor_set = NeighborSet(node, 2, 2**self.n)
+        self.neighbor_set = NeighborSet(node, 2, self.m)
         self.node = node
-    
+
+    def distance(self, node):
+        return distance(self.node, node, self.m)
+
+    def candidates(self):
+        return [node] + self.routing_table.get_nodes() + self.neighbor_set.get_heighbors()
+
+    def closest_predecessor(self, node):
+        return min(self.candidates(),
+                   key = lambda p: ccw_distance(node, p, self.m))
+
     @readOnly(RouterLock)
     def closest_node(self, node):
-        return min(self.routing_table.get_nodes() + self.neighbor_set.get_neighbors(),
-                   key = lambda p: distance(node, p, 2**self.n))
+        return min(self.candidates(),
+                   key = lambda p: distance(node, p, self.m))
+
+    def update(self, nodes):
+        self.routing_table.update(nodes)
+        self.neighbor_set.update(nodes)
+
+    def debug(self):
+        logging.debug("{Routing Table}")
+        self.routing_table.debug()
+        logging.debug("{Neighbor Set}")
+        self.neighbor_set.debug()
 
 if __name__ == '__main__':
 

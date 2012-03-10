@@ -25,6 +25,7 @@ class WDHTClient():
         client = Client(protocol)
         attr = getattr(client, name)
         if callable(attr):
+            print "Hello World", attr
             def wrapped(*args, **kwargs):
                 # Connect!
                 transport.open()

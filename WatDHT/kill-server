@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+ps aux | grep WatServer | cut -f2 -d" " | xargs kill -9

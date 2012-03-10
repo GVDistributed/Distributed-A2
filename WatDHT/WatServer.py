@@ -13,13 +13,14 @@ from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.server import TServer
 
-from router import Router
+from WatClient import WDHTClient
+import Router
 
 class WDHTHandler(Iface):
 
     def __init__(self, node):
         self.node = node
-        self.router = Router(self.node)
+        self.router = Router.Router(self.node)
 
     def get(self, key):
         """
@@ -41,6 +42,7 @@ class WDHTHandler(Iface):
         Parameters:
          - nid
         """
+        logging.info("%032x is Joining", nid.int_id)
         pass
 
     def ping(self):
@@ -87,7 +89,13 @@ class WDHTHandler(Iface):
         """
         Performs process of joining the system
         """
-        pass
+        self.router.debug()
+        client = WDHTClient(existing_host, existing_port)
+        node_ids = client.join(self.node) 
+        print node_ids
+        self.router.update(node_ids)
+        self.router.debug()
+        print "DONE!!!"
 
     def maintain_neighbors(self):
         """
@@ -107,6 +115,7 @@ def start(handler, port):
     tfactory = TTransport.TBufferedTransportFactory()
     pfactory = TBinaryProtocol.TBinaryProtocolFactory()
     server = TServer.TThreadedServer(processor, transport, tfactory, pfactory)
+    server.serve()
 
 def periodic_thread(func, period):
     def wrapped():
@@ -123,19 +132,14 @@ def delayed_thread(func, delay):
 
 if __name__ == '__main__':
     
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)#INFO)
 
     if not len(sys.argv) in (4, 6):
         print "Usage: ./server node_id ip port [existing_ip existing_port]"
         sys.exit(-1)
 
-    print "Initializing"
-
-    # Parse and pack integer node id into binary string 
-    node_id = int(sys.argv[1])
-    node_id = NodeID.to_id(node_id)
-
-    # Create our node object
+    print "Initializing ..."
+    node_id = Router.hash(sys.argv[1])
     host = sys.argv[2]
     port = int(sys.argv[3])    
     node = NodeID(node_id, host, port)
