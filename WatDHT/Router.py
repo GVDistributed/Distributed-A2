@@ -3,7 +3,8 @@
 from hashlib import md5
 import random
 import struct
-
+from utils import readOnly, writeLock
+from ReadWriteLock import ReadWriteLock
 import itertools
 
 class NodeID(object):
@@ -25,18 +26,22 @@ class NodeID(object):
 def hash(x):
     return md5(x).digest()
     
-class RoutingTable(object):
 
+class RoutingTable(object):
+    RoutingTableLock = ReadWriteLock() 
     def __init__(self, node, logm, regions):
         self.node = node
         self.logm = logm
         self.regions = regions
         self.table = {}
 
+    @writeLock(RoutingTableLock)
     def update(self, nodes):
         for node in nodes:
             self.add_node(node)
 
+
+    @writeLock(RoutingTableLock)
     def add_node(self, node):
         """
             Adds a new node to the routing table.
@@ -48,6 +53,7 @@ class RoutingTable(object):
         self.table[r] = node
         return was_replaced
 
+    
     def get_region(self, node):
         diff_bits = self.node.int_id ^ node.int_id
         for r in range(self.regions - 1):
@@ -56,9 +62,11 @@ class RoutingTable(object):
                 return r
         return self.regions - 1
 
+    @readOnly(RoutingTableLock)
     def get_nodes(self):
         return self.table.values()
-
+    
+    @readOnly(RoutingTableLock)
     def debug(self):
         print "[%x]" % self.node.int_id
         for r in range(self.regions):
@@ -78,7 +86,7 @@ def distance(p1, p2, mod):
                ccw_distance(p1, p2, mod))
 
 class NeighborSet(object):
-    
+    NeighborLock = ReadWriteLock() 
     def __init__(self, node, size, m):
         self.node = node
         self.size = size
@@ -86,6 +94,7 @@ class NeighborSet(object):
         self.ccw = []
         self.m = m
 
+    @readOnly(NeighborLock)
     def is_neighbor(self, node):
         for neighbor in itertools.chain(self.cw, self.ccw):
              if neighbor.int_id == node.int_id:
@@ -98,19 +107,23 @@ class NeighborSet(object):
     def ccw_distance(self, node):
         return ccw_distance(self.node, node, self.m)
     
+    @readOnly(NeighborLock)
     def get_neighbors(self):
         return self.cw + self.ccw
 
+    @readOnly(NeighborLock)
     def get_successor(self):
         if not self.cw:
             return None
         return self.cw[0]
 
+    @readOnly(NeighborLock)
     def get_predecessor(self):
         if not self.ccw:
             return None
         return self.ccw[0]
 
+    @writeLock(NeighborLock)
     def update(self, nodes):
         self.cw.extend(nodes)
         self.ccw.extend(nodes)
@@ -119,18 +132,20 @@ class NeighborSet(object):
         self.cw = self.cw[:self.size]
         self.ccw = self.ccw[:self.size]
  
+    @readOnly(NeighborLock)
     def debug(self):
         print "CW: ", ', '.join("%032x" % node.int_id for node in self.cw)
         print "CCW:", ', '.join("%032x" % node.int_id for node in self.ccw)
 
 class Router(object):
-    
+    RouterLock = ReadWriteLock()
     def __init__(self, node, n = 128):
         self.n = n 
         self.routing_table = RoutingTable(node, self.n, self.n / 32)
         self.neighbor_set = NeighborSet(node, 2, 2**self.n)
         self.node = node
-
+    
+    @readOnly(RouterLock)
     def closest_node(self, node):
         return min(self.routing_table.get_nodes() + self.neighbor_set.get_neighbors(),
                    key = lambda p: distance(node, p, 2**self.n))
