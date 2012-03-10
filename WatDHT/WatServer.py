@@ -140,7 +140,7 @@ class WDHTHandler(Iface):
         Parameters:
          - id
         """
-        cur = self.router.closest_successor(self,NodeID(id,-1,-1))
+        cur = self.router.closest_successor(NodeID(id,-1,-1))
         if cur.id == self.node.id:
             return cur
         else:
