@@ -74,6 +74,25 @@ class RoutingTable(object):
                 return r
         return self.regions - 1
 
+    def get_last_node(self, r):
+        ret = self.node.int_id
+        ret = ret | ((1<< (self.logm-r-1))-1)
+        ret = ret ^ (1<< (self.logm-r-1))
+        return ret
+
+    @readOnly(RoutingTableLock)
+    def get_missing_regions(self):
+        ret = dict()
+        for r in xrange(self.regions):
+            if r not in self.table:
+                ret[r]= self.get_last_node(r)
+        return ret
+                
+                
+                
+                
+
+
     @readOnly(RoutingTableLock)
     def get_nodes(self):
         return self.table.values()

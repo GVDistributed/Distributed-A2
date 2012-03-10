@@ -53,13 +53,13 @@ class NodeID:
     x = struct.unpack(">QQ", self.id)
     return (x[0]<<64)|x[1] 
 
-  '''
+  
   @classmethod
   def to_id(cls, i):
     a = i>>64
     b = i%(1<<64)
     return struct.pack(">QQ", a, b)
-  '''
+ 
 
   def __init__(self, id=None, ip=None, port=None,):
     self.id = id

@@ -82,7 +82,9 @@ class WDHTHandler(Iface):
         else:
             cur = self.router.get_neighbors()
             cur.append(self.node.id)
-        self.router.update([nid])
+        if (self.id != nid.id):
+            #no need to update yourself
+            self.router.update([nid])
         return cur
 
     @writeLock(migratelock, 0, lambda: WatDHTException(WatDHTErrorType.OL_MIGRATION_IN_PROGRESS))
@@ -150,7 +152,7 @@ class WDHTHandler(Iface):
         Parameters:
          - id
         """
-        cur = self.router.closest_predecessor(self,NodeID(id,-1,-1))
+        cur = self.router.closest_predecessor(NodeID(id,-1,-1))
         if cur.id == self.node.id:
             return cur
         else:
@@ -216,17 +218,18 @@ class WDHTHandler(Iface):
                 else:
                     closestNode = self.router.closest_predecessor(self.node)
                 client = WDHTClient(closestNode.ip, closestNode.port)
-                cur = client.gossip_neighbors(self.node.id, neighbors)
+                cur = client.gossip_neighbors(self.node, neighbors)
                 self.neighbor_set.update(cur) 
 
+        ##Find out who is dead.
         neighbors = self.router.neighbor_set.get_neighbors()
         isDead = set()
         for node in neighbors:
             client = WDHTClient(node.ip,node.port)
             try:
-                cur = client.gossip_neighbors(self.node.id,neighbors)
+                cur = client.gossip_neighbors(self.node,neighbors)
                 self.neighbor_set.update(cur)
-            except E:
+            except Exception as E:
                 #TODO: Check if there are other exceptions that can happen
                 isDead.add(node)
 
@@ -235,6 +238,7 @@ class WDHTHandler(Iface):
                             ', '.join([ str(x.int_id) for x in isDead])))
             self.router.remove([x for x in isDead])
 
+        ### Add the proper node to each side if we are mising a node.
         (cw,ccw) = self.router.neighbor_set.get_candidate_list()
         while (len(cw)<2):
             helper(cw,0)
@@ -250,8 +254,20 @@ class WDHTHandler(Iface):
         """
         Performs periodic routing maintenance by pinging
         """
-         
         logging.info("Maintaining Routing Table")
+        neighbors = self.router.routing_table.get_nodes()
+        isDead = set()
+        for node in neighbors:
+            try:
+                WDHTClient(node.ip, node.port).ping()
+            except Exception as e:
+                isDead.add(node)
+
+        self.router.remove([x for x in isDead])
+        missing_regions = self.router.get_missing_regions()
+        for r,val in missing_regions.iteritems():
+            self.maintain(NodeID.to_id(val),self.node)
+         
 
 def start(handler, port):
     processor = Processor(handler)
