@@ -147,12 +147,19 @@ class Router(object):
         self.neighbor_set = NeighborSet(node, 2, self.m)
         self.node = node
 
+    @readOnly(RouterLock)
     def distance(self, node):
         return distance(self.node, node, self.m)
 
-    def candidates(self):
-        return [node] + self.routing_table.get_nodes() + self.neighbor_set.get_heighbors()
+    @readOnly(RouterLock)
+    def get_nodes(self):
+        return self.routing_table.get_nodes() + self.neighbor_set.get_neighbors()
 
+    @readOnly(RouterLock)
+    def candidates(self):
+        return [self.node] + self.get_nodes()
+
+    @readOnly(RouterLock)
     def closest_predecessor(self, node):
         return min(self.candidates(),
                    key = lambda p: ccw_distance(node, p, self.m))
@@ -162,10 +169,12 @@ class Router(object):
         return min(self.candidates(),
                    key = lambda p: distance(node, p, self.m))
 
+    @writeLock(RouterLock)
     def update(self, nodes):
         self.routing_table.update(nodes)
         self.neighbor_set.update(nodes)
 
+    @readOnly(RouterLock)
     def debug(self):
         logging.debug("{Routing Table}")
         self.routing_table.debug()

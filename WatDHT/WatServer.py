@@ -43,7 +43,18 @@ class WDHTHandler(Iface):
          - nid
         """
         logging.info("%032x is Joining", nid.int_id)
-        pass
+
+        next_node = self.router.closest_predecessor(nid)
+        if next_node == self.node:
+            nodes = self.router.get_nodes()
+        else:
+            nodes = WDHTClient(next_node.ip, next_node.port).join(nid)
+        nodes.append(self.node)
+
+        self.router.update([nid])
+        self.router.debug()
+
+        return nodes
 
     def ping(self):
         return self.node.id 
@@ -89,13 +100,10 @@ class WDHTHandler(Iface):
         """
         Performs process of joining the system
         """
-        self.router.debug()
         client = WDHTClient(existing_host, existing_port)
         node_ids = client.join(self.node) 
-        print node_ids
         self.router.update(node_ids)
         self.router.debug()
-        print "DONE!!!"
 
     def maintain_neighbors(self):
         """
