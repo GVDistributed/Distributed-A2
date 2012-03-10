@@ -105,7 +105,7 @@ class ReadWriteLock(object):
         finally:
             self.__condition.release()
 
-    def acquireWrite(self,timeout=None):
+    def acquireWrite(self,timeout=None,callback=None):
         """Acquire a write lock for the current thread, waiting at most
         timeout seconds or doing a non-blocking check in case timeout is <= 0.
 
@@ -185,6 +185,10 @@ class ReadWriteLock(object):
                             # We were a simple pending writer, just remove us
                             # from the FIFO list.
                             self.__pendingwriters.remove(me)
+
+                        if callback is not None:
+                            callback()
+
                         raise RuntimeError("Acquiring write lock timed out")
                     self.__condition.wait(remaining)
                 else:

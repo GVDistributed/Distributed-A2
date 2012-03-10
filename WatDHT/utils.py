@@ -49,10 +49,10 @@ def readOnly(rwLock,timeout = None):
         return newF
     return wrap
 
-def writeLock(rwLock,timeout = None):
+def writeLock(rwLock,timeout = None,callback=None):
     def wrap(f):
         def newF(*args, **kwargs):
-            rwLock.acquireWrite(timeout)
+            rwLock.acquireWrite(timeout, callback)
             try:
                 return f(*args, **kwargs)
             finally:
