@@ -46,8 +46,9 @@ class WDHTHandler(Iface):
             value = self.store.get(key)
             if value is None:
                 raise WatDHTException(WatDHTErrorType.KEY_NOT_FOUND)
+            return value
 
-        return WDHTClient(next_node.ip, next_node.port).get(nid)
+        return WDHTClient(next_node.ip, next_node.port).get(key)
 
     @wait_on(bootstrapped)
     @readOnly(migratelock)
@@ -59,7 +60,7 @@ class WDHTHandler(Iface):
             logging.debug("Oh wait, that's me!")
             self.store.put(key, val, duration)
         else:
-            WDHTClient(next_node.ip, next_node.port).get(nid)
+            WDHTClient(next_node.ip, next_node.port).put(key, val, duration)
 
     def join(self, nid):
         """
