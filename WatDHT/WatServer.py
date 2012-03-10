@@ -128,7 +128,7 @@ class WDHTHandler(Iface):
          - neighbors
         """
         cur = self.router.neighbor_set.get_neighbors()
-        cur.append(self.node.id)
+        cur.append(self.node)
         neighbors.append(nid)
         self.router.neighbor_set.update(neighbors)
         return cur
@@ -139,7 +139,7 @@ class WDHTHandler(Iface):
          - id
         """
         cur = self.router.closest_successor(self,NodeID(id,-1,-1))
-        if (cur.id == self.node.id):
+        if cur.id == self.node.id:
             return cur
         else:
             client = WDHTClient(cur.ip, cur.port)
