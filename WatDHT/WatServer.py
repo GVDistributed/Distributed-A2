@@ -3,6 +3,7 @@
 import sys
 import time
 import threading
+import logging
 
 from WatDHT import Iface,Processor
 from ttypes import *
@@ -12,12 +13,13 @@ from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.server import TServer
 
-users = []
+from router import Router
 
 class WDHTHandler(Iface):
 
     def __init__(self, node):
         self.node = node
+        self.router = Router(self.node)
 
     def get(self, key):
         """
@@ -41,9 +43,8 @@ class WDHTHandler(Iface):
         """
         pass
 
-    def ping(self, ):
-        print("Got a ping")
-        return "GURU"
+    def ping(self):
+        return self.node.id 
 
     def maintain(self, id, nid):
         """
@@ -84,9 +85,21 @@ class WDHTHandler(Iface):
 
     def init(self, existing_host, existing_port):
         """
-        Performs process of joining the DHT system
+        Performs process of joining the system
         """
         pass
+
+    def maintain_neighbors(self):
+        """
+        Performs periodic neighbor maintenance by gossiping
+        """
+        logging.info("Maintaining Neighbors")
+
+    def maintain_routing(self):
+        """
+        Performs periodic routing maintenance by pinging
+        """
+        logging.info("Maintaining Routing Table")
 
 def start(handler, port):
     processor = Processor(handler)
@@ -95,7 +108,26 @@ def start(handler, port):
     pfactory = TBinaryProtocol.TBinaryProtocolFactory()
     server = TServer.TThreadedServer(processor, transport, tfactory, pfactory)
 
+def periodic_thread(func, period):
+    def wrapped():
+        while True:
+            time.sleep(period)
+            func()
+    threading.Thread(target=wrapped).start()
+
+def delayed_thread(func, delay):
+    def wrapped():
+        time.sleep(delay)
+        func()
+    threading.Thread(target=wrapped).start()
+
 if __name__ == '__main__':
+    
+    logging.basicConfig(level=logging.INFO)
+
+    if not len(sys.argv) in (4, 6):
+        print "Usage: ./server node_id ip port [existing_ip existing_port]"
+        sys.exit(-1)
 
     print "Initializing"
 
@@ -109,7 +141,6 @@ if __name__ == '__main__':
     node = NodeID(node_id, host, port)
 
     print "Node: %x (%s:%d)" % (node.int_id, host, port)
-
     handler = WDHTHandler(node)
 
     if len(sys.argv) == 6:
@@ -117,8 +148,11 @@ if __name__ == '__main__':
         existing_port = int(sys.argv[5])
 
         print "Joining (%s:%d)" % (existing_host, existing_port)
+        delayed_thread(lambda:handler.init(existing_host, existing_port), 1)
 
-        threading.Thread(target=lambda:handler.init(existing_host, existing_port)).start()
+    # Starting maintenance threads
+    periodic_thread(handler.maintain_neighbors, 10)
+    periodic_thread(handler.maintain_routing, 30)
 
     # Start server
     print "Starting Server"
