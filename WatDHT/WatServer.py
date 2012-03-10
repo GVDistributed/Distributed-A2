@@ -76,7 +76,7 @@ class WDHTHandler(Iface):
     def maintain(self, id, nid):
         cur = None
         closest = self.router.closest_predecessor(NodeId(id,-1,-1))
-        if (closest is not self):
+        if closest.id is not self.node.id:
             client = WDHTClient(closest.ip, closest.port)
             cur = client.maintain(id,nid)
         else:
