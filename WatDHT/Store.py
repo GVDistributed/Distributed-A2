@@ -3,15 +3,16 @@
 import time
 from utils import readOnly, writeLock
 from ReadWriteLock import ReadWriteLock
+from ttypes import NodeID
 
 class Store(object):
 
-    storelock = ReadWriteLock()
+    StoreLock = ReadWriteLock()
 
     def __init__(self):
         self.store = dict()
     
-    @readOnly(storelock)
+    @readOnly(StoreLock)
     def get(self, key):
         """ Returns a value given a key """
         value, expiry = self.store.get(key, (None, None)) 
@@ -25,7 +26,7 @@ class Store(object):
 
         return value
                 
-    @writeLock(storelock)
+    @writeLock(StoreLock)
     def put(self, key, value, expiry):
         if expiry < 0:
             expiry = None
@@ -37,3 +38,26 @@ class Store(object):
              expiry = time.time() + expiry
         
         self.store[key] = (value, expiry)
+
+    @writeLock(StoreLock)
+    def migrate_keys(self, node):
+        """ Returns a dict of keys that are greater than an node
+            and returns them from the dictionary """
+        ret = dict()
+        thresh = node.int_id
+        for k,(v,e) in self.store.iteritems():
+            if (k>=thresh):
+                ret[k]=v
+        for k in ret.iterkeys():
+            self.store.pop(k)
+        return ret
+
+    @writeLock(StoreLock)
+    def merge(self, kvstore):
+        for k,v in kvstore.iteritems():
+            self.store[k] = (v,None)
+    
+    @readOnly(StoreLock)
+    def __str__(self):
+        return "{"+ ' '.join(["<%s::%s,%s>"%(k,v,str(e))
+                             for k,(v,e) in self.store.iteritems()]) + "}"

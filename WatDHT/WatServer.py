@@ -77,15 +77,21 @@ class WDHTHandler(Iface):
         nodes.append(self.node)
 
         self.router.update([nid])
-        self.router.debug()
+        #logging.debug(str(self.router))
 
         return nodes
 
     def ping(self):
         return self.node.id 
 
+
     def maintain(self, id, nid):
-        logging.info("Maintain called from %032x", nid.int_id)
+        ## TODO: Not sure why there is a type error sometimes... need to investigate
+        #        try:
+        #            logging.info("Maintain called from %032x with id %032x", nid.int_id,NodeID.to_id(id))
+        #        except TypeError:
+        #            print(id,len(id),"%032x"%nid.int_id, "%032x"%self.node.int_id)
+        #
         cur = None
         closest = self.router.closest_predecessor(NodeID(id,-1,-1))
         logging.debug("Closest id was %032x",closest.int_id)
@@ -94,7 +100,7 @@ class WDHTHandler(Iface):
             client = WDHTClient(closest.ip, closest.port)
             cur = client.maintain(id,nid)
         else:
-            logging.debug("we are teh closest")
+            logging.debug("we are the closest")
             cur = self.router.neighbor_set.get_neighbors()
             cur.append(self.node)
         if (self.node.id != nid.id):
@@ -113,8 +119,10 @@ class WDHTHandler(Iface):
             raise WatDHTException(WatDHTErrorType.INCORRECT_MIGRATION_SOURCE, node=successor)
 
         # prepare and remove key-value dict from the store here
-
-        return {}
+        logging.debug("The current store before migration is %s",str(self.store))
+        migrating_keys = self.store.migrate_keys(NodeID(id,-1,-1))
+        logging.debug("The current store after migration is %s",str(self.store))
+        return migrating_keys
 
     @writeLock(migratelock)
     def prv_migrate_from(self):
@@ -122,7 +130,7 @@ class WDHTHandler(Iface):
         backoff = 0.1
         while True:
             predecessor = self.router.neighbor_set.get_predecessor()
-            logging.info("Migrating from %032x", predecessor.int_id)
+            logging.info("Migrating from %032x to %032x", predecessor.int_id, self.node.int_id)
             try:
                 kvs = WDHTClient(predecessor.ip, predecessor.port).migrate_kv(self.node.id)
                 break
@@ -139,7 +147,8 @@ class WDHTHandler(Iface):
                     raise
 
         # Populate store with key values
-        # ...
+        self.store.merge(kvs)
+        logging.debug("The new store is %s", str(self.store))
 
     def gossip_neighbors(self, nid, neighbors):
         """
@@ -151,6 +160,8 @@ class WDHTHandler(Iface):
         cur.append(self.node)
         neighbors.append(nid)
         logging.info("Calling Update from gossip")
+        #Remove self from the udpate list
+        neighbors.remove(self.node)
         self.router.neighbor_set.update(neighbors)
         return cur
 
@@ -181,6 +192,7 @@ class WDHTHandler(Iface):
         """
         Initiate the node given that it's the very first
         """
+        logging.info("Done Bootstrapping")
         self.bootstrapped.set()
 
     def prv_init(self, existing_host, existing_port):
@@ -192,16 +204,21 @@ class WDHTHandler(Iface):
         logging.info("Finding predecessor and bootstrapping")
         node_ids = WDHTClient(existing_host, existing_port).join(self.node) 
         self.router.update(node_ids)
-        self.router.debug()
+        #self.router.debug()
 
-        # Enable receiving requests
+        ## TODO: Should this not be before the bootstrap is set? 
+        self.prv_migrate_from()
         self.bootstrapped.set()
 
-        self.prv_migrate_from()
+        # Enable receiving requests
+        logging.info("Done Bootstrapping")
+        self.bootstrapped.set()
+
 
         # Maintain routing table
-        # ...
-
+        self.prv_maintain_neighbors()
+        self.prv_maintain_routing()
+        #logging.debug(str(self.router))
         logging.info("Initialized")
         
  
@@ -244,6 +261,7 @@ class WDHTHandler(Iface):
                 if (closestNode.id != self.node.id):
                     client = WDHTClient(closestNode.ip, closestNode.port)
                     cur = client.gossip_neighbors(self.node, neighbors)
+                    cur.remove(self.node)
                     self.router.neighbor_set.update(cur) 
 
         ##Find out who is dead.
@@ -253,6 +271,7 @@ class WDHTHandler(Iface):
             client = WDHTClient(node.ip,node.port)
             try:
                 cur = client.gossip_neighbors(self.node,neighbors)
+                cur.remove(self.node)
                 self.router.neighbor_set.update(cur)
             except Exception as E:
                 #TODO: Check if there are other exceptions that can happen
@@ -273,7 +292,8 @@ class WDHTHandler(Iface):
             helper(ccw,1)
             (cw,ccw) = self.router.neighbor_set.get_candidate_list()
 
-        logging.info("Maintaining Neighbors")
+        logging.info("Done Maintaining Neighbors")
+        self.router.neighbor_set.debug()
 
     def prv_maintain_routing(self):
         """
@@ -292,6 +312,8 @@ class WDHTHandler(Iface):
         missing_regions = self.router.routing_table.get_missing_regions()
         for r,val in missing_regions.iteritems():
             self.maintain(NodeID.to_id(val),self.node)
+        logging.info("Done Maintaing Routing Table")
+        self.router.routing_table.debug() 
          
 
 def start(handler, port):
@@ -304,8 +326,9 @@ def start(handler, port):
 
 if __name__ == '__main__':
     
-    logging.basicConfig(level=logging.DEBUG)#INFO)
-
+    logging_format = '%(asctime)s %(process)04d %(levelname)5s %(message)s'
+    logging.basicConfig(filename = 'log', format = logging_format, level=logging.DEBUG)#INFO)
+    logging.info("------------------------STARTING RUN-----------------------------------")
     if not len(sys.argv) in (4, 6):
         print "Usage: ./server node_id ip port [existing_ip existing_port]"
         sys.exit(-1)

@@ -100,6 +100,14 @@ class RoutingTable(object):
             else:
                 logging.debug("%d", r)
 
+    @readOnly(RoutingTableLock)
+    def __str__(self):
+        ret = "Routing Table\n"
+        for r in xrange(self.regions):
+            if self.table.has_key(r):
+                ret+= "%d %032x\n"%(r,self.table[r].int_id)
+        return ret
+
 def cw_distance(origin, p, mod):
     return (p.int_id - origin.int_id) % mod
 
@@ -177,6 +185,11 @@ class NeighborSet(object):
         logging.debug("CW: " + ', '.join("%032x" % node.int_id for node in self.cw))
         logging.debug("CCW:" + ', '.join("%032x" % node.int_id for node in self.ccw))
 
+    @readOnly(NeighborLock)
+    def __str__(self):
+        ret = "NeighorSet\n"+ "CW: " + ', '.join("%032x" % node.int_id for node in self.cw) + "\nCCW:" + ', '.join("%032x" % node.int_id for node in self.ccw) + "\n"
+        return ret
+
 class Router(object):
     RouterLock = ReadWriteLock()
     def __init__(self, node, n = 128):
@@ -231,7 +244,12 @@ class Router(object):
         self.routing_table.debug()
         logging.debug("{Neighbor Set}")
         self.neighbor_set.debug()
-
+    
+    @readOnly(RouterLock)
+    def __str__(self):
+        ret = "Router\n\n %s\n %s\n"%(
+                str(self.neighbor_set), str(self.routing_table))
+        return ret
 
 
 if __name__ == '__main__':
