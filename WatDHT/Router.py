@@ -10,7 +10,9 @@ from ReadWriteLock import ReadWriteLock
 import logging
 import itertools
 
-class NodeID(object):
+from ttypes import NodeID
+
+class DummyNodeID(object):
     """
     Dummy class for testing purposes
     """
@@ -224,9 +226,47 @@ class Router(object):
                     key = lambda p: cw_distance(node, p, self.m))
 
     @readOnly(RouterLock)
-    def closest_node(self, node):
+    def closest_absolute_node(self, node):
         return min(self.candidates(),
                    key = lambda p: distance(node, p, self.m))
+
+    @readOnly(RouterLock)
+    def route_key(self, key):
+        nid = hash(key)
+        target_node = NodeID(nid, -1, -1)
+        return self.route(target_node)
+
+    @readOnly(RouterLock)
+    def route(self, node, inclusive=True):
+        """
+        Routes to the closest predecessor. May route along either direction
+        according to whichever minimizes the absolute distance. Case logic
+        is necessary to recognize when we may have just overshot the
+        closest predecessor.
+        """
+
+        if not inclusive:
+            # decrease the node id by one
+            node = NodeID(NodeID.to_id((node.int_id - 1) %  self.m), -1, -1)
+
+        closest_predecessor = self.closest_predecessor(node)
+        closest_node = self.closest_absolute_node(node)
+        predecessor = self.neighbor_set.get_predecessor()
+
+        # self.debug()
+        # logging.debug("%032x %032x %032x", self.node.int_id, closest_predecessor.int_id, closest_node.int_id)
+
+        if closest_predecessor.id == self.node.id:
+            # we happen to be the closest predecessor
+            return None
+ 
+        elif closest_node.id == self.node.id:
+            # we happen to be the closest node, but not the closest predecessor, so it must be true that
+            # our predecessor is the closest predecessor
+            assert predecessor.id != self.node.id
+            return predecessor
+
+        return closest_node
 
     @writeLock(RouterLock)
     def update(self, nodes):
@@ -253,13 +293,13 @@ class Router(object):
 
 
 if __name__ == '__main__':
-    m0 = NodeID.dummy()
-    m1 = NodeID.dummy()
-    m2 = NodeID.dummy()
-    m3 = NodeID.dummy()
-    m4 = NodeID.dummy()
-    m5 = NodeID.dummy()
-    m6 = NodeID.dummy()
+    m0 = DummyNodeID.dummy()
+    m1 = DummyNodeID.dummy()
+    m2 = DummyNodeID.dummy()
+    m3 = DummyNodeID.dummy()
+    m4 = DummyNodeID.dummy()
+    m5 = DummyNodeID.dummy()
+    m6 = DummyNodeID.dummy()
     
     m0.id = struct.pack(">QQ", 0, 0)
    
@@ -279,6 +319,6 @@ if __name__ == '__main__':
     neighbor_set.debug()
 
     for i in range(10):
-        m = NodeID.dummy()
+        m = DummyNodeID.dummy()
         print "%032x %032x" % (m.int_id, router.closest_node(m).int_id)
 

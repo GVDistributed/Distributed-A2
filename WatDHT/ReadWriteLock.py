@@ -187,7 +187,7 @@ class ReadWriteLock(object):
                             self.__pendingwriters.remove(me)
 
                         if callback is not None:
-                            callback()
+                            raise callback()
 
                         raise RuntimeError("Acquiring write lock timed out")
                     self.__condition.wait(remaining)

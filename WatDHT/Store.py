@@ -35,7 +35,7 @@ class Store(object):
                 self.store.pop(key)
             return 
         else:
-             expiry = time.time() + expiry
+            expiry = time.time() + expiry
         
         self.store[key] = (value, expiry)
 
