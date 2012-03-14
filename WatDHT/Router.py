@@ -316,6 +316,8 @@ if __name__ == '__main__':
     m0.id = struct.pack(">QQ", 0, 0)
    
     router = Router(m0)
+    print(router.node.int_id)
+    print( [(k,"%032x"%v)for k,v in router.routing_table.get_missing_regions().iteritems()])
 
     routing_table = router.routing_table
     routing_table.update([m1, m2, m3, m4, m5, m6])

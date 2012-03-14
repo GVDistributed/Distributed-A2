@@ -98,8 +98,9 @@ class WDHTHandler(Iface):
 
     @wait_on(allow_routing)
     def maintain(self, id, nid):
+        ##TODO: Not sure why there is a type error sometimes... need to investigate
+        logging.info("Maintain called from %032x with id %032x", nid.int_id,NodeID(id).int_id)
         closest = self.router.closest_predecessor(NodeID(id))
-        logging.debug("Closest id was %032x",closest.int_id)
         if closest.id is not self.node.id:
             logging.debug(" we are not the closest making a call")
             try:
@@ -110,7 +111,7 @@ class WDHTHandler(Iface):
                 return self.maintain(id, nid)
                
         else:
-            logging.debug("we are the closest")
+            logging.debug("We are the closest")
             cur = self.router.neighbor_set.get_neighbors()
             cur.append(self.node)
 
@@ -183,12 +184,34 @@ class WDHTHandler(Iface):
 
     @wait_on(allow_requests)
     def gossip_neighbors(self, nid, neighbors):
+
+        def node_find(L, x_int_id):
+            for y in L:
+                if  y.int_id == x_int_id:
+                    return y
+            return None
+
+        logging.debug("Starting Gossip")
         cur = self.router.neighbor_set.get_neighbors()
         cur.append(self.node)
         neighbors.append(nid)
         logging.info("Calling Update from gossip")
         # Remove self from the udpate list
         neighbors.remove(self.node)
+        maybe_dead = frozenset([x.int_id for x in neighbors]) - \
+                    frozenset([x.int_id for x in self.router.neighbor_set.get_neighbors()])
+        maybe_dead = [ node_find(x) for x in maybe_dead]
+        for node in maybe_dead:
+            if (node.id == self.node.id):
+                continue
+            try:
+                WDHTClient(node.ip,node.port).ping()
+            except TTransport.TTransportException as e:
+                neighbors.remove(node)
+                logging.exception(e)
+
+        logging.debug("Finishing gossip by updating the neighbors %s",
+                        ','.join(["%032x"%(node.int_id) for node in neighbors]))
         self.router.neighbor_set.update(neighbors)
         return cur
 
@@ -224,6 +247,7 @@ class WDHTHandler(Iface):
         """
         self.allow_requests.set()
         self.allow_routing.set()
+        logging.info("Routing Set")
         logging.info("Initialized")
 
     def prv_init(self, existing_host, existing_port):
@@ -245,6 +269,8 @@ class WDHTHandler(Iface):
         # Perform routing/neighbor maintenance
         self.prv_maintain_neighbors()
         self.allow_routing.set() # only make routing decisions after fully gossiping 
+        logging.info("Routing Set")
+        logging.info("Calling Routing from initialize")
         self.prv_maintain_routing()
 
         logging.info("Initialized")
@@ -296,13 +322,14 @@ class WDHTHandler(Iface):
         neighbors = self.router.neighbor_set.get_neighbors()
         isDead = []
         for node in neighbors:
-            client = WDHTClient(node.ip,node.port)
+            client = WDHTClient(node.ip, node.port)
             try:
                 cur = client.gossip_neighbors(self.node,neighbors)
                 to_update = [node for node in cur if node.id != self.node.id]
                 self.router.neighbor_set.update(to_update)
-            except TTransportException:
+            except TTransportException as e:
                 isDead.append(node)
+                logging.exception(e)
         isDead = unique(isDead)
 
         if (len(isDead)>0):
@@ -310,20 +337,26 @@ class WDHTHandler(Iface):
                             ', '.join([ str(x.int_id) for x in isDead])))
             self.router.remove([x for x in isDead])
 
-        # Add the proper node to each side if we are mising a node.
+        ### Add the proper node to each side if we are mising a node.
+        logging.debug("Going to do CW side")
         (cw,ccw) = self.router.neighbor_set.get_candidate_list()
-        while (len(cw)<2):
-            helper(cw,0)
+        tries =0
+        while (len(cw)<2) and tries<2:
+            helper(cw, 0)
             (cw,ccw) = self.router.neighbor_set.get_candidate_list()
+            tries +=1 
 
-        while (len(ccw)<2):
+        logging.debug("Going to do CCW side")
+        tries = 0
+        while (len(ccw)<2) and tries<2:
             helper(ccw,1)
             (cw,ccw) = self.router.neighbor_set.get_candidate_list()
+            tries +=1 
 
         logging.info("Done Maintaining Neighbors")
         self.router.neighbor_set.debug()
 
-    @wait_on(allow_requests)
+    @wait_on(allow_routing)
     def prv_maintain_routing(self):
         """
         Performs periodic routing maintenance by pinging
@@ -333,14 +366,16 @@ class WDHTHandler(Iface):
         isDead = []
         for node in neighbors:
             try:
+                logging.debug("Going to ping %032x",node.int_id) 
                 WDHTClient(node.ip, node.port).ping()
             except TTransportException:
                 isDead.append(node)
+                logging.exception(e)
         isDead = unique(isDead)
-
         self.router.remove(isDead)
         missing_regions = self.router.routing_table.get_missing_regions()
         for r,val in missing_regions.iteritems():
+            logging.info("I am %032x. Going to call maintain on %032x, with length %s",self.node.int_id, val, len(NodeID.to_id(val)))
             self.maintain(NodeID.to_id(val),self.node)
         logging.info("Done Maintaing Routing Table")
         self.router.routing_table.debug() 
