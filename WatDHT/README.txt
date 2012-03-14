@@ -19,13 +19,15 @@ Steps To Run (Nothing different here):
   ./server node_id ip port
   ./server node_id ip port existing_ip existing_port
 
-To Kill All Servers (Note: only tested on school's linux environment):
-  ./kill-server
+To Kill Servers (Note: only tested on school's linux environment):
+  ./kill-server  (Kills all servers)
+  ./kill-one-server NodeID
 
 Miscellaneous Test Scripts:
   ./test-putget.py
   ./test-big.py
   ./test-migrate.py
+  ./test-failure.py
 
 To View Logged Output:
   tail -f log

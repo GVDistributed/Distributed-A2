@@ -161,8 +161,14 @@ class NeighborSet(object):
     @writeLock(NeighborLock)
     def remove(self, nodes):
         for node in nodes:
-            self.cw.remove(node)
-            self.ccw.remove(node)
+            try:
+                self.cw.remove(node)
+            except ValueError: 
+                pass
+            try:
+                self.ccw.remove(node)
+            except ValueError:
+                pass
 
     @readOnly(NeighborLock)
     def get_candidate_list(self):
@@ -258,7 +264,7 @@ class Router(object):
 
         if closest_predecessor.id == self.node.id:
             # we happen to be the closest predecessor
-            return None
+            return self.node
  
         elif closest_node.id == self.node.id:
             # we happen to be the closest node, but not the closest predecessor, so it must be true that

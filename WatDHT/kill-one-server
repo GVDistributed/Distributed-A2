@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+ps aux | grep WatServer | grep python | grep `whoami` | grep "WatServer.py ${1}" | tr -s " " | cut -d" " -f2 | xargs kill -9

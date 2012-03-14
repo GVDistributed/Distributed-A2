@@ -9,7 +9,7 @@ try:
     delayed_thread(lambda: os.system("./server guru localhost 15244 localhost 15243"))
     time.sleep(0.1)
 
-    WDHTClient("localhost", 15243).put("XX", "1", -1)
+    WDHTClient("localhost", 15242).put("XX", "1", -1)
     WDHTClient("localhost", 15243).put("YY", "2", -1)
     WDHTClient("localhost", 15243).put("ZZ", "3", -1)
     WDHTClient("localhost", 15243).put("a", "4", -1)

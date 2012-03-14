@@ -12,6 +12,7 @@ from thrift.transport import TSocket
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.server import TServer
+from thrift.transport.TTransport import TTransportException
 
 from utils import periodic_thread
 from utils import delayed_thread
@@ -41,7 +42,7 @@ class WDHTHandler(Iface):
     @readOnly(migratelock)
     def get(self, key):
         next_node = self.router.route_key(key)
-        if next_node is None:
+        if next_node.id == self.node.id:
             logging.debug("GET(%s)", key)
             value = self.store.get(key)
             if value is None:
@@ -49,53 +50,72 @@ class WDHTHandler(Iface):
             return value
         else:
             logging.debug("Sending GET(%s) to %032x", key, next_node.int_id)
-        return WDHTClient(next_node.ip, next_node.port).get(key)
+            try:
+                return WDHTClient(next_node.ip, next_node.port).get(key)
+            except TTransportException:
+                logging.info("Call to %032x failed", next_node.int_id)
+                self.router.remove([next_node])
+                return self.get(key) 
 
     @wait_on(allow_routing)
     @readOnly(migratelock)
     def put(self, key, val, duration):
         next_node = self.router.route_key(key)
-        if next_node is None:
+        if next_node.id == self.node.id:
             logging.debug("PUT(%s, %s)", key, val)
             self.store.put(key, val, duration)
         else:
             logging.debug("Sending PUT(%s, %s) to %032x", key, val, next_node.int_id)
-            WDHTClient(next_node.ip, next_node.port).put(key, val, duration)
+            try:
+                WDHTClient(next_node.ip, next_node.port).put(key, val, duration)
+            except TTransportException:
+                logging.info("Call to %032x failed", next_node.int_id)
+                self.router.remove([next_node])
+                return self.put(key, val, duration)
 
     @wait_on(allow_routing)
     def join(self, nid):
         logging.info("%032x is Joining, Currently at %032x", nid.int_id, self.node.int_id)
 
         next_node = self.router.route(nid, False)
-        if next_node is None:
+        if next_node.id == self.node.id:
             nodes = self.router.get_nodes()
         else:
-            nodes = WDHTClient(next_node.ip, next_node.port).join(nid)
+            try:
+                nodes = WDHTClient(next_node.ip, next_node.port).join(nid)
+            except TTransportException:
+                logging.info("Call to %032x failed", next_node.int_id)
+                self.router.remove([next_node])
+                return self.join(nid)
+ 
         nodes.append(self.node)
-
         self.router.update([nid])
 
         return unique(nodes)
 
-    @wait_on(allow_requests)
     def ping(self):
         return self.node.id 
 
     @wait_on(allow_routing)
     def maintain(self, id, nid):
-        cur = None
         closest = self.router.closest_predecessor(NodeID(id))
         logging.debug("Closest id was %032x",closest.int_id)
         if closest.id is not self.node.id:
             logging.debug(" we are not the closest making a call")
-            client = WDHTClient(closest.ip, closest.port)
-            cur = client.maintain(id,nid)
+            try:
+                cur = WDHTClient(closest.ip, closest.port).maintain(id, nid)
+            except TTransportException:
+                logging.info("Call to %032x failed", closest.int_id)
+                self.router.remove([closest])
+                return self.maintain(id, nid)
+               
         else:
             logging.debug("we are the closest")
             cur = self.router.neighbor_set.get_neighbors()
             cur.append(self.node)
-        if (self.node.id != nid.id):
-            #no need to update yourself
+
+        if self.node.id != nid.id:
+            # no need to update yourself
             self.router.update([nid])
         logging.debug("Maintain will return %s",' '.join(
                         ["%032x"%(x.int_id) for x in cur]))
@@ -110,6 +130,10 @@ class WDHTHandler(Iface):
         # the given WatDHTException.
 
         successor = self.router.neighbor_set.get_successor()
+        if successor is None:
+            logging.error("No successor to %032x", self.node.int_id)
+            return
+
         logging.info("Migrating to %032x", successor.int_id)
         if successor.id != id:
             raise WatDHTException(WatDHTErrorType.INCORRECT_MIGRATION_SOURCE, node=successor)
@@ -128,6 +152,10 @@ class WDHTHandler(Iface):
         backoff = 0.01
         while True:
             predecessor = self.router.neighbor_set.get_predecessor()
+            if predecessor is None:
+                logging.warn("No predecessor to migrate from (probably because this failed multiple times)")
+                return
+
             logging.info("Migrating from %032x to %032x", predecessor.int_id, self.node.int_id)
             try:
                 kvs = WDHTClient(predecessor.ip, predecessor.port).migrate_kv(self.node.id)
@@ -144,50 +172,51 @@ class WDHTHandler(Iface):
                 else:
                     raise
 
+            except TTransportException:
+                logging.info("Call to %032x failed", predecessor.int_id)
+                self.router.remove([predecessor])
+                return self.prv_migrate_from()
+
         # Populate store with key values
         self.store.merge(kvs)
         logging.debug("The new store is %s", str(self.store))
 
     @wait_on(allow_requests)
     def gossip_neighbors(self, nid, neighbors):
-        """
-        Parameters:
-         - nid
-         - neighbors
-        """
         cur = self.router.neighbor_set.get_neighbors()
         cur.append(self.node)
         neighbors.append(nid)
         logging.info("Calling Update from gossip")
-        #Remove self from the udpate list
+        # Remove self from the udpate list
         neighbors.remove(self.node)
         self.router.neighbor_set.update(neighbors)
         return cur
 
     @wait_on(allow_routing)
     def closest_node_cr(self, id):
-        """
-        Parameters:
-         - id
-        """
         cur = self.router.closest_successor(NodeID(id))
         if cur.id == self.node.id:
             return cur
         else:
-            client = WDHTClient(cur.ip, cur.port)
-            return client.closest_node_cr(id)
+            try:
+                return WDHTClient(cur.ip, cur.port).closest_node_cr(id)
+            except TTransportException:
+                logging.info("Call to %032x failed", cur.int_id)
+                self.router.remove([cur])
+                return self.closest_node_cr(id)
 
     @wait_on(allow_routing)
     def closest_node_ccr(self, id):
-        """
-        Parameters:
-         - id
-        """
         cur = self.router.closest_predecessor(NodeID(id))
         if cur.id == self.node.id:
             return cur
         else:
-            return WDHTClient(cur.ip, cur.port).closest_predecessor(id)
+            try:
+                return WDHTClient(cur.ip, cur.port).closest_node_ccr(id)
+            except TTransportException:
+                logging.info("Call to %032x failed", cur.int_id)
+                self.router.remove([cur])
+                return self.closest_node_ccr(id)
 
     def prv_init_origin(self):
         """
@@ -262,8 +291,8 @@ class WDHTHandler(Iface):
                     cur = client.gossip_neighbors(self.node, neighbors)
                     cur.remove(self.node)
                     self.router.neighbor_set.update(cur) 
-
-        ##Find out who is dead.
+        
+        # Find out who is dead.
         neighbors = self.router.neighbor_set.get_neighbors()
         isDead = []
         for node in neighbors:
@@ -272,8 +301,7 @@ class WDHTHandler(Iface):
                 cur = client.gossip_neighbors(self.node,neighbors)
                 to_update = [node for node in cur if node.id != self.node.id]
                 self.router.neighbor_set.update(to_update)
-            except Exception as e:
-                #TODO: Check if there are other exceptions that can happen
+            except TTransportException:
                 isDead.append(node)
         isDead = unique(isDead)
 
@@ -282,7 +310,7 @@ class WDHTHandler(Iface):
                             ', '.join([ str(x.int_id) for x in isDead])))
             self.router.remove([x for x in isDead])
 
-        ### Add the proper node to each side if we are mising a node.
+        # Add the proper node to each side if we are mising a node.
         (cw,ccw) = self.router.neighbor_set.get_candidate_list()
         while (len(cw)<2):
             helper(cw,0)
@@ -306,7 +334,7 @@ class WDHTHandler(Iface):
         for node in neighbors:
             try:
                 WDHTClient(node.ip, node.port).ping()
-            except Exception as e:
+            except TTransportException:
                 isDead.append(node)
         isDead = unique(isDead)
 
@@ -328,7 +356,7 @@ def start(handler, port):
 if __name__ == '__main__':
     
     logging_format = '%(asctime)s %(process)04d %(levelname)5s %(message)s'
-    logging.basicConfig(filename = 'log', format = logging_format, level=logging.DEBUG)#INFO)
+    logging.basicConfig(filename = 'log', format = logging_format, level=logging.DEBUG)
     logging.info("------------------------STARTING RUN-----------------------------------")
     if not len(sys.argv) in (4, 6):
         print "Usage: ./server node_id ip port [existing_ip existing_port]"
