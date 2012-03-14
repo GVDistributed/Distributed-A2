@@ -307,21 +307,20 @@ class WDHTHandler(Iface):
         self.router.neighbor_set.debug()
 
     def prv_maintain_routing(self):
-        #### SKIPPING FOR NOW
-        return None
         """
         Performs periodic routing maintenance by pinging
         """
         logging.info("Maintaining Routing Table")
         neighbors = self.router.routing_table.get_nodes()
-        isDead = set()
+        isDead = []
         for node in neighbors:
             try:
                 WDHTClient(node.ip, node.port).ping()
             except Exception as e:
-                isDead.add(node)
+                isDead.append(node)
+        isDead = unique(isDead)
 
-        self.router.remove([x for x in isDead])
+        self.router.remove(isDead)
         missing_regions = self.router.routing_table.get_missing_regions()
         for r,val in missing_regions.iteritems():
             self.maintain(NodeID.to_id(val),self.node)
