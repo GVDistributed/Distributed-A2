@@ -298,7 +298,6 @@ class Router(object):
                 str(self.neighbor_set), str(self.routing_table))
         return ret
 
-
 if __name__ == '__main__':
     m0 = DummyNodeID.dummy()
     m1 = DummyNodeID.dummy()
@@ -327,5 +326,5 @@ if __name__ == '__main__':
 
     for i in range(10):
         m = DummyNodeID.dummy()
-        print "%032x %032x" % (m.int_id, router.closest_node(m).int_id)
+        print "%032x %032x" % (m.int_id, router.closest_absolute_node(m).int_id)
 

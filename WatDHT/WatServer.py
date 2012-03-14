@@ -64,10 +64,6 @@ class WDHTHandler(Iface):
 
     @wait_on(allow_routing)
     def join(self, nid):
-        """
-        Parameters:
-         - nid
-        """
         logging.info("%032x is Joining, Currently at %032x", nid.int_id, self.node.int_id)
 
         next_node = self.router.route(nid, False)
@@ -78,7 +74,6 @@ class WDHTHandler(Iface):
         nodes.append(self.node)
 
         self.router.update([nid])
-        #logging.debug(str(self.router))
 
         return unique(nodes)
 
@@ -88,12 +83,6 @@ class WDHTHandler(Iface):
 
     @wait_on(allow_routing)
     def maintain(self, id, nid):
-        ## TODO: Not sure why there is a type error sometimes... need to investigate
-        #        try:
-        #            logging.info("Maintain called from %032x with id %032x", nid.int_id,NodeID.to_id(id))
-        #        except TypeError:
-        #            print(id,len(id),"%032x"%nid.int_id, "%032x"%self.node.int_id)
-        #
         cur = None
         closest = self.router.closest_predecessor(NodeID(id))
         logging.debug("Closest id was %032x",closest.int_id)
@@ -112,10 +101,14 @@ class WDHTHandler(Iface):
                         ["%032x"%(x.int_id) for x in cur]))
                                         
         return cur
-
+    
     @wait_on(allow_requests)
     @writeLock(migratelock, 0.01, lambda: WatDHTException(WatDHTErrorType.OL_MIGRATION_IN_PROGRESS))
     def migrate_kv(self, id):
+        # The migratelock will time out after 0.01 seconds, in which case a migration must be
+        # in progress, because it is shared with 'prv_migrate_from', and so the callback will raise
+        # the given WatDHTException.
+
         successor = self.router.neighbor_set.get_successor()
         logging.info("Migrating to %032x", successor.int_id)
         if successor.id != id:
@@ -131,7 +124,7 @@ class WDHTHandler(Iface):
 
     @writeLock(migratelock)
     def prv_migrate_from(self):
-        # Migrate from predecessor
+        # Migrate from predecessor. Shares a write lock with migrate_kv.
         backoff = 0.01
         while True:
             predecessor = self.router.neighbor_set.get_predecessor()
@@ -144,8 +137,6 @@ class WDHTHandler(Iface):
                 if e.error_code == WatDHTErrorType.INCORRECT_MIGRATION_SOURCE:
                     self.router.update([e.node])
                     logging.debug("Incorrect migration source")
-                    # print "%032x %032x %032x" % (self.node.int_id, self.router.neighbor_set.get_predecessor().int_id, e.node.int_id)
-                    # assert self.router.neighbor_set.get_predecessor().id == e.node.id
                 elif e.error_code == WatDHTErrorType.OL_MIGRATION_IN_PROGRESS:
                     backoff *= 1.1
                     time.sleep(backoff)
@@ -215,8 +206,6 @@ class WDHTHandler(Iface):
         logging.info("Finding predecessor and bootstrapping")
         node_ids = WDHTClient(existing_host, existing_port).join(self.node) 
         self.router.update(node_ids)
-        # print "%032x:%d" % (self.node.int_id, self.node.port)
-        # print str(self.router.neighbor_set)
 
         # "Enable receiving requests once join completes" is what the assignment asks for. 
         self.allow_requests.set()
@@ -231,6 +220,7 @@ class WDHTHandler(Iface):
 
         logging.info("Initialized")
 
+    @wait_on(allow_requests)
     def prv_maintain_neighbors(self):
         """
         Performs periodic neighbor maintenance by gossiping
@@ -285,7 +275,6 @@ class WDHTHandler(Iface):
             except Exception as e:
                 #TODO: Check if there are other exceptions that can happen
                 isDead.append(node)
-                print e
         isDead = unique(isDead)
 
         if (len(isDead)>0):
@@ -306,6 +295,7 @@ class WDHTHandler(Iface):
         logging.info("Done Maintaining Neighbors")
         self.router.neighbor_set.debug()
 
+    @wait_on(allow_requests)
     def prv_maintain_routing(self):
         """
         Performs periodic routing maintenance by pinging
@@ -344,32 +334,30 @@ if __name__ == '__main__':
         print "Usage: ./server node_id ip port [existing_ip existing_port]"
         sys.exit(-1)
 
-    print "Initializing ..."
+    logging.info("Initializing ...")
     node_id = Router.hash(sys.argv[1])
     host = sys.argv[2]
     port = int(sys.argv[3])    
     node = NodeID(node_id, host, port)
 
-    print "Node: %x (%s:%d)" % (node.int_id, host, port)
+    logging.info("Node: %x (%s:%d)", node.int_id, host, port)
     handler = WDHTHandler(node)
 
     if len(sys.argv) == 6:
         existing_host = sys.argv[4]
         existing_port = int(sys.argv[5])
 
-        print "Joining (%s:%d)" % (existing_host, existing_port)
+        logging.info("Joining (%s:%d)", existing_host, existing_port)
         delayed_thread(lambda:handler.prv_init(existing_host, existing_port))
 
     else:
         handler.prv_init_origin()
 
     # Starting maintenance threads
-    #TODO Change this back to 10s and 30 s
-    periodic_thread(handler.prv_maintain_neighbors, 1)
-    periodic_thread(handler.prv_maintain_routing, 5)
+    periodic_thread(handler.prv_maintain_neighbors, 10)
+    periodic_thread(handler.prv_maintain_routing, 30)
 
     # Start server
-    print "Starting Server"
+    logging.info("Starting Server")
     start(handler, port)
-    
-    print("Done")
+    logging.info("Done") 
