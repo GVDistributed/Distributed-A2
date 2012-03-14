@@ -29,6 +29,7 @@ import Router
 class WDHTHandler(Iface):
 
     allow_requests = threading.Event()
+    allow_routing = threading.Event()
     migratelock = ReadWriteLock() 
 
     def __init__(self, node):
@@ -36,7 +37,7 @@ class WDHTHandler(Iface):
         self.router = Router.Router(self.node)
         self.store = Store.Store()
 
-    @wait_on(allow_requests)
+    @wait_on(allow_routing)
     @readOnly(migratelock)
     def get(self, key):
         next_node = self.router.route_key(key)
@@ -50,7 +51,7 @@ class WDHTHandler(Iface):
             logging.debug("Sending GET(%s) to %032x", key, next_node.int_id)
         return WDHTClient(next_node.ip, next_node.port).get(key)
 
-    @wait_on(allow_requests)
+    @wait_on(allow_routing)
     @readOnly(migratelock)
     def put(self, key, val, duration):
         next_node = self.router.route_key(key)
@@ -61,7 +62,7 @@ class WDHTHandler(Iface):
             logging.debug("Sending PUT(%s, %s) to %032x", key, val, next_node.int_id)
             WDHTClient(next_node.ip, next_node.port).put(key, val, duration)
 
-    @wait_on(allow_requests)
+    @wait_on(allow_routing)
     def join(self, nid):
         """
         Parameters:
@@ -81,10 +82,11 @@ class WDHTHandler(Iface):
 
         return unique(nodes)
 
+    @wait_on(allow_requests)
     def ping(self):
         return self.node.id 
 
-    @wait_on(allow_requests)
+    @wait_on(allow_routing)
     def maintain(self, id, nid):
         ## TODO: Not sure why there is a type error sometimes... need to investigate
         #        try:
@@ -93,7 +95,7 @@ class WDHTHandler(Iface):
         #            print(id,len(id),"%032x"%nid.int_id, "%032x"%self.node.int_id)
         #
         cur = None
-        closest = self.router.closest_predecessor(NodeID(id,-1,-1))
+        closest = self.router.closest_predecessor(NodeID(id))
         logging.debug("Closest id was %032x",closest.int_id)
         if closest.id is not self.node.id:
             logging.debug(" we are not the closest making a call")
@@ -121,7 +123,9 @@ class WDHTHandler(Iface):
 
         # prepare and remove key-value dict from the store here
         logging.debug("The current store before migration is %s",str(self.store))
-        migrating_keys = self.store.migrate_keys(NodeID(id,-1,-1))
+        should_migrate = lambda key: self.router.migrate_key(key, NodeID(id))
+        migrating_keys = self.store.migrate_keys(should_migrate)
+
         logging.debug("The current store after migration is %s",str(self.store))
         return migrating_keys
 
@@ -169,26 +173,26 @@ class WDHTHandler(Iface):
         self.router.neighbor_set.update(neighbors)
         return cur
 
-    @wait_on(allow_requests)
+    @wait_on(allow_routing)
     def closest_node_cr(self, id):
         """
         Parameters:
          - id
         """
-        cur = self.router.closest_successor(NodeID(id,-1,-1))
+        cur = self.router.closest_successor(NodeID(id))
         if cur.id == self.node.id:
             return cur
         else:
             client = WDHTClient(cur.ip, cur.port)
             return client.closest_node_cr(id)
 
-    @wait_on(allow_requests)
+    @wait_on(allow_routing)
     def closest_node_ccr(self, id):
         """
         Parameters:
          - id
         """
-        cur = self.router.closest_predecessor(NodeID(id,-1,-1))
+        cur = self.router.closest_predecessor(NodeID(id))
         if cur.id == self.node.id:
             return cur
         else:
@@ -196,10 +200,11 @@ class WDHTHandler(Iface):
 
     def prv_init_origin(self):
         """
-        Initiate the node given that it's the very first
+        Initiate the node given that is the very first
         """
-        logging.info("Done Bootstrapping")
         self.allow_requests.set()
+        self.allow_routing.set()
+        logging.info("Initialized")
 
     def prv_init(self, existing_host, existing_port):
         """
@@ -213,17 +218,17 @@ class WDHTHandler(Iface):
         # print "%032x:%d" % (self.node.int_id, self.node.port)
         # print str(self.router.neighbor_set)
 
+        # "Enable receiving requests once join completes" is what the assignment asks for. 
+        self.allow_requests.set()
+
         # Issue migrate_kv to its predecessor
         self.prv_migrate_from()
 
-        # "Enable receiving requests once join completes" is what the assignment asks for. 
-        # But we'll ignore this and enable it after migration
-        self.allow_requests.set()
-
         # Perform routing/neighbor maintenance
         self.prv_maintain_neighbors()
+        self.allow_routing.set() # only make routing decisions after fully gossiping 
         self.prv_maintain_routing()
-        
+
         logging.info("Initialized")
 
     def prv_maintain_neighbors(self):

@@ -40,13 +40,12 @@ class Store(object):
         self.store[key] = (value, expiry)
 
     @writeLock(StoreLock)
-    def migrate_keys(self, node):
+    def migrate_keys(self, should_migrate):
         """ Returns a dict of keys that are greater than an node
             and returns them from the dictionary """
         ret = dict()
-        thresh = node.int_id
         for k,(v,e) in self.store.iteritems():
-            if (k>=thresh):
+            if should_migrate(k):
                 ret[k]=v
         for k in ret.iterkeys():
             self.store.pop(k)

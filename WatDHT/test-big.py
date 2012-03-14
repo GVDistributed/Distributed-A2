@@ -2,13 +2,14 @@
 
 import time
 import os
-from utils import delayed_thread
-from WatClient import WDHTClient
-
 import random
 
+from utils import delayed_thread
+from WatClient import WDHTClient
+from ttypes import WatDHTException
+
 num_hosts = 10
-num_pairs = 1000
+num_pairs = 10
 first_port = 11333
 
 def rand_string():
@@ -25,7 +26,7 @@ try:
         # time.sleep(1)
         print "[[Starting %d]]" % i
         delayed_thread((lambda i: lambda: os.system("./server %d localhost %d localhost %d" % (i, first_port + i, first_port)))(i))
-    time.sleep(1)
+    time.sleep(0.1)
 
     for i in range(num_pairs):
         key, value = table[i]
@@ -35,7 +36,11 @@ try:
     for i in range(num_pairs):
         key, value = table[i]
         print "[[Getting %s]]" % key
-        retrieved_value = WDHTClient("localhost", random.randrange(num_hosts) + first_port).get(key)
+        try:
+            retrieved_value = WDHTClient("localhost", random.randrange(num_hosts) + first_port).get(key)
+        except WatDHTException as e:
+            print e.error_code, e.error_message, e.node
+            raise 
         print "[[Got %s =? %s (%s)]]" % (retrieved_value, value, retrieved_value == value)
         if value != retrieved_value: 
             print "Failed"

@@ -146,6 +146,10 @@ class WatDHTException(Exception):
   )
 
   def __init__(self, error_code=None, error_message=None, node=None,):
+    if error_message is None:
+        try:
+            error_message = WatDHTErrorType._VALUES_TO_NAMES[error_code]
+        except: pass
     self.error_code = error_code
     self.error_message = error_message
     self.node = node

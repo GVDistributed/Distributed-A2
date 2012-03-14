@@ -233,7 +233,7 @@ class Router(object):
     @readOnly(RouterLock)
     def route_key(self, key):
         nid = hash(key)
-        target_node = NodeID(nid, -1, -1)
+        target_node = NodeID(nid)
         return self.route(target_node)
 
     @readOnly(RouterLock)
@@ -247,7 +247,7 @@ class Router(object):
 
         if not inclusive:
             # decrease the node id by one
-            node = NodeID(NodeID.to_id((node.int_id - 1) %  self.m), -1, -1)
+            node = NodeID(NodeID.to_id((node.int_id - 1) %  self.m))
 
         closest_predecessor = self.closest_predecessor(node)
         closest_node = self.closest_absolute_node(node)
@@ -277,6 +277,13 @@ class Router(object):
     def remove(self, nodes):
         self.routing_table.remove(nodes)
         self.neighbor_set.remove(nodes)
+
+    @readOnly(RouterLock)
+    def migrate_key(self, key, to_node):
+        """Returns true iff the given key should be migrated to the
+        given node."""
+        key_node = NodeID(hash(key))
+        return cw_distance(self.node, key_node, self.m) > cw_distance(to_node, key_node, self.m)
 
     @readOnly(RouterLock)
     def debug(self):
