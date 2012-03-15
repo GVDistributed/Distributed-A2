@@ -200,8 +200,10 @@ class WDHTHandler(Iface):
         neighbors.remove(self.node)
         maybe_dead = frozenset([x.int_id for x in neighbors]) - \
                     frozenset([x.int_id for x in self.router.neighbor_set.get_neighbors()])
-        maybe_dead = [ node_find(x) for x in maybe_dead]
+        maybe_dead = [ node_find(neighbors, x) for x in maybe_dead]
         for node in maybe_dead:
+            if node is None:
+                continue
             if (node.id == self.node.id):
                 continue
             try:
