@@ -27,7 +27,9 @@ Miscellaneous Test Scripts:
   ./test-putget.py
   ./test-big.py
   ./test-migrate.py
+  ./test-migrate-hard.py
   ./test-failure.py
+  ./test-large-failure.py
 
 To View Logged Output:
   tail -f log

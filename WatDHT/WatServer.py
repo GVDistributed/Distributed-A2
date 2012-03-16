@@ -262,7 +262,21 @@ class WDHTHandler(Iface):
 
         # Find the predecessor and boostrap
         logging.info("Finding predecessor and bootstrapping")
-        node_ids = WDHTClient(existing_host, existing_port).join(self.node) 
+
+        # Try joining the system multiple times
+        attempts = 3
+        while True:
+            try:
+                node_ids = WDHTClient(existing_host, existing_port).join(self.node) 
+                break
+            except TTransportException:
+                logging.error("Could not connect to %s:%d", existing_host, existing_port)
+            attempts -= 1
+            if attempts <= 0:
+                raise RuntimeError("Could not connect to %s:%d after multiple attempts" % \
+                    (existing_host, existing_port))
+            time.sleep(1)
+ 
         self.router.update(node_ids)
 
         # "Enable receiving requests once join completes" is what the assignment asks for. 

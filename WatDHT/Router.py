@@ -259,9 +259,6 @@ class Router(object):
         closest_node = self.closest_absolute_node(node)
         predecessor = self.neighbor_set.get_predecessor()
 
-        # self.debug()
-        # logging.debug("%032x %032x %032x", self.node.int_id, closest_predecessor.int_id, closest_node.int_id)
-
         if closest_predecessor.id == self.node.id:
             # we happen to be the closest predecessor
             return self.node
@@ -269,6 +266,8 @@ class Router(object):
         elif closest_node.id == self.node.id:
             # we happen to be the closest node, but not the closest predecessor, so it must be true that
             # our predecessor is the closest predecessor
+            if predecessor is None:
+                return self.node
             assert predecessor.id != self.node.id
             return predecessor
 
