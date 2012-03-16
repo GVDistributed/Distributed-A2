@@ -46,7 +46,7 @@ class RoutingTable(object):
                 if (v.id == node.id):
                     toDel.add(k)
         for x in toDel:
-            self.table.pop(k)
+            self.table.pop(x)
         
     @writeLock(RoutingTableLock)
     def update(self, nodes):

@@ -65,7 +65,8 @@ class WDHTHandler(Iface):
             logging.debug("PUT(%s, %s)", key, val)
             self.store.put(key, val, duration)
         else:
-            logging.debug("Sending PUT(%s, %s) to %032x", key, val, next_node.int_id)
+            logging.debug("Sending PUT(%s, %s) to %032x", 
+                            key, val, next_node.int_id)
             try:
                 WDHTClient(next_node.ip, next_node.port).put(key, val, duration)
             except TTransportException:
@@ -75,7 +76,8 @@ class WDHTHandler(Iface):
 
     @wait_on(allow_routing)
     def join(self, nid):
-        logging.info("%032x is Joining, Currently at %032x", nid.int_id, self.node.int_id)
+        logging.info("%032x is Joining, Currently at %032x", 
+                      nid.int_id, self.node.int_id)
 
         next_node = self.router.route(nid, False)
         if next_node.id == self.node.id:
@@ -98,8 +100,9 @@ class WDHTHandler(Iface):
 
     @wait_on(allow_routing)
     def maintain(self, id, nid):
-        ##TODO: Not sure why there is a type error sometimes... need to investigate
-        logging.info("Maintain called from %032x with id %032x", nid.int_id,NodeID(id).int_id)
+        """ Maintain"""
+        logging.info("Maintain called from %032x with id %032x", 
+                     nid.int_id, NodeID(id).int_id)
         closest = self.router.closest_predecessor(NodeID(id))
         if closest.id is not self.node.id:
             logging.debug(" we are not the closest making a call")
@@ -118,8 +121,8 @@ class WDHTHandler(Iface):
         if self.node.id != nid.id:
             # no need to update yourself
             self.router.update([nid])
-        logging.debug("Maintain will return %s",' '.join(
-                        ["%032x"%(x.int_id) for x in cur]))
+        logging.debug("Maintain will return %s", 
+                        ' '.join(["%032x"%(x.int_id) for x in cur]))
                                         
         return cur
     
@@ -370,7 +373,7 @@ class WDHTHandler(Iface):
             try:
                 logging.debug("Going to ping %032x",node.int_id) 
                 WDHTClient(node.ip, node.port).ping()
-            except TTransportException:
+            except TTransportException as e:
                 isDead.append(node)
                 logging.exception(e)
         isDead = unique(isDead)
@@ -391,9 +394,9 @@ def start(handler, port):
     server.serve()
 
 if __name__ == '__main__':
-    
     logging_format = '%(asctime)s %(process)04d %(levelname)5s %(message)s'
-    logging.basicConfig(filename = 'log', format = logging_format, level=logging.DEBUG)
+    logging.basicConfig(filename = 'log', format = logging_format, 
+                        level=logging.DEBUG)
     logging.info("------------------------STARTING RUN-----------------------------------")
     if not len(sys.argv) in (4, 6):
         print "Usage: ./server node_id ip port [existing_ip existing_port]"
